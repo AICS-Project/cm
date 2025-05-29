@@ -1,0 +1,141 @@
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>チラシメーカー – コピペAI版</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <style>
+    body{font-family:sans-serif;background:#f7f3ea;padding:20px;max-width:860px;margin:auto}
+    h1{font-size:1.4em}
+    label{font-weight:700;margin-top:1em;display:block}
+    input,textarea{width:100%;font-size:1em;margin-top:.3em;border-radius:4px;border:1px solid #bbb;padding:.4em}
+    textarea[readonly]{background:#f0f0f0}
+    .event-block{display:flex;gap:4px;margin-bottom:.5em}
+    .event-block input{flex:1}
+    button{margin-top:1em;padding:.5em 1.2em;border:none;border-radius:6px;background:#6b8e23;color:#fff;font-weight:bold;cursor:pointer}
+    button.small{padding:.3em .8em;font-size:.85em;background:#888}
+    #preview{background:#fff;padding:25px;border:1px solid #ccc;margin-top:30px}
+    #preview h2{font-size:24px;text-align:center;margin:0 0 10px}
+    #preview p{margin:6px 0}
+    ul{padding-left:20px;margin:6px 0}
+  </style>
+</head>
+<body>
+<h1>家族学習会チラシメーカー – コピペAI版</h1>
+
+<label>年度</label>
+<input id="year" value="2025">
+
+<label>開催日・地域・会場（＋追加可）</label>
+<div id="events"></div>
+<button class="small" onclick="addEvent()">＋追加</button>
+
+<label>対象者</label>
+<input id="target" placeholder="例：精神疾患を持つご家族">
+
+<label>講座の目的（複数選択OK）</label>
+<div>
+  <label><input type="checkbox" name="purpose" value="安心">安心</label>
+  <label><input type="checkbox" name="purpose" value="交流">交流</label>
+  <label><input type="checkbox" name="purpose" value="制度活用">制度活用</label>
+  <label><input type="checkbox" name="purpose" value="本人理解">本人理解</label>
+</div>
+
+<label>時間</label>
+<input id="time" placeholder="13:30–16:30">
+
+<label>参加費</label>
+<input id="price" placeholder="1,500円（テキスト代含む）">
+
+<button onclick="makePrompt()">📝 AI用プロンプト作成</button>
+<textarea id="promptBox" rows="6" readonly></textarea>
+<button class="small" onclick="copyPrompt()">📋コピー</button>
+
+<label>AIのJSON返答を貼付</label>
+<textarea id="aiReply" rows="6" placeholder="ここにAIのJSONをペースト"></textarea>
+<button onclick="applyAI()">📥貼付＆反映</button>
+
+<div id="preview">
+  <h2 id="flyer-title">2025年度 家族による家族学習会</h2>
+  <p id="flyer-catch">また笑顔になれるように</p>
+  <p id="flyer-body">本講座は、精神疾患を持つご家族を対象に、安心・交流を目的とした全5回の連続講座です。</p>
+  <ul id="flyer-events"><li>開催日を追加してください</li></ul>
+  <p id="flyer-time">時間：13:30–16:30</p>
+  <p id="flyer-price">参加費：1,500円</p>
+</div>
+
+<button onclick="downloadPDF()">📄 PDF保存</button>
+
+<script>
+function addEvent(){
+  const div=document.createElement('div');
+  div.className='event-block';
+  div.innerHTML='<input type="date" class="event-date"><input type="text" class="event-region" placeholder="地域"><input type="text" class="event-venue" placeholder="会場">';
+  document.getElementById('events').appendChild(div);
+}
+addEvent();
+
+function getPurposes(){
+  return [...document.querySelectorAll('input[name=purpose]:checked')].map(el=>el.value);
+}
+
+function makePrompt(){
+  const data={
+    year:year.value,
+    audience:target.value,
+    purpose:getPurposes().join("・")||"安心・交流",
+    price:price.value,
+    time:time.value,
+    count:document.querySelectorAll('.event-block').length
+  };
+  const txt=`あなたはやさしく信頼感のある広報担当者です。
+以下データでA4チラシ用コピーをJSON形式で生成してください。
+
+年度: ${data.year}
+対象者: ${data.audience}
+講座目的: ${data.purpose}
+参加費: ${data.price}
+時間: ${data.time}
+開催回数: ${data.count}
+
+<<出力>>
+{
+  "title": "20文字以内",
+  "catch": "20文字以内",
+  "body": "3〜4行",
+  "imagePrompt": ""
+}`;
+  promptBox.value=txt.trim();
+}
+
+function copyPrompt(){
+  navigator.clipboard.writeText(promptBox.value).then(()=>alert("プロンプトをコピーしました"));
+}
+
+function applyAI(){
+  let obj;
+  try{ obj=JSON.parse(aiReply.value) }catch{ alert("JSONが不正です"); return;}
+  flyerTitle.textContent=obj.title||flyerTitle.textContent;
+  flyerCatch.textContent=obj.catch||flyerCatch.textContent;
+  flyerBody.textContent=obj.body||flyerBody.textContent;
+}
+
+function refreshEvents(){
+  const list=[...document.querySelectorAll('.event-block')].map((b,i)=>{
+    const d=b.querySelector('.event-date').value;
+    const r=b.querySelector('.event-region').value;
+    const v=b.querySelector('.event-venue').value;
+    if(d&&r&&v){return `第${i+1}回：${new Date(d).toLocaleDateString('ja-JP')}（${r}/${v}）`;}
+    return null;
+  }).filter(Boolean);
+  flyerEvents.innerHTML='<li>'+list.join('</li><li>')+'</li>';
+}
+document.getElementById('events').addEventListener('input',refreshEvents);
+
+function downloadPDF(){
+  html2pdf().from(document.getElementById('preview')).set({filename:'flyer.pdf',html2canvas:{scale:2},jsPDF:{unit:'mm',format:'a4'}}).save();
+}
+</script>
+</body>
+</html>
